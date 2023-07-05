@@ -1,4 +1,17 @@
 <div align="center">
+
+<strong>
+
+> **Warning** \
+> These source codes have some known bugs that are left unfixed. \
+> The latest Jule compiler is quite advanced and more stable than this compiler. \
+> This compiler is the first Jule compiler developed to improve Jule's bootstrapping compiler. \
+> <ins>_It no longer gets updates and is not maintained._</ins>
+
+</strong>
+
+<br><br>
+
 <p>
     <img width="150" src="https://raw.githubusercontent.com/julelang/resources/master/jule_icon.svg?sanitize=true">
 </p>
