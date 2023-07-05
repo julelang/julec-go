@@ -1,0 +1,179 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+// The Jule code is a modified version of the original Go code from
+// https://github.com/golang/go/blob/go1.19/src/math/pow.go and came with this notice.
+//
+// ====================================================
+// Copyright (c) 2009 The Go Authors. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+// 
+//    * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//    * Redistributions in binary form must reproduce the above
+// copyright notice, this list of conditions and the following disclaimer
+// in the documentation and/or other materials provided with the
+// distribution.
+//    * Neither the name of Google Inc. nor the names of its
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// ====================================================
+
+// Special cases taken from FreeBSD's /usr/src/lib/msun/src/e_pow.c
+// updated by IEEE Std. 754-2008 "Section 9.2.1 Special values".
+
+// Returns x**y, the base-x exponential of y.
+//
+// Special cases are (in order):
+//  pow(x, ±0) = 1 for any x
+//  pow(1, y) = 1 for any y
+//  pow(x, 1) = x for any x
+//  pow(nan, y) = nan
+//  pow(x, nan) = nan
+//  pow(±0, y) = ±inf for y an odd integer < 0
+//  pow(±0, -inf) = +inf
+//  pow(±0, +inf) = +0
+//  pow(±0, y) = +inf for finite y < 0 and not an odd integer
+//  pow(±0, y) = ±0 for y an odd integer > 0
+//  pow(±0, y) = +0 for finite y > 0 and not an odd integer
+//  pow(-1, ±inf) = 1
+//  pow(x, +inf) = +inf for |x| > 1
+//  pow(x, -inf) = +0 for |x| > 1
+//  pow(x, +inf) = +0 for |x| < 1
+//  pow(x, -inf) = +inf for |x| < 1
+//  pow(+inf, y) = +inf for y > 0
+//  pow(+inf, y) = +0 for y < 0
+//  pow(-inf, y) = pow(-0, -y)
+//  pow(x, y) = nan for finite x < 0 and finite non-integer y
+pub fn pow(x: f64, y: f64): f64 {
+	match {
+	| y == 0 | x == 1:
+		ret 1
+	| y == 1:
+		ret x
+	| is_nan(x) | is_nan(y):
+		ret nan()
+	| x == 0:
+		match {
+		| y < 0:
+			if is_odd_int(y) {
+				ret copysign(inf(1), x)
+			}
+			ret inf(1)
+		| y > 0:
+			if is_odd_int(y) {
+				ret x
+			}
+			ret 0
+		}
+	| is_inf(y, 0):
+		match {
+		| x == -1:
+			ret 1
+		| (abs(x) < 1) == is_inf(y, 1):
+			ret 0
+		|:
+			ret inf(1)
+		}
+	| is_inf(x, 0):
+		if is_inf(x, -1) {
+			ret pow(1/x, -y) // pow(-0, -y)
+		}
+		match {
+		| y < 0: ret 0
+		| y > 0: ret inf(1)
+		}
+	| y == 0.5:
+		ret sqrt(x)
+	| y == -0.5:
+		ret 1 / sqrt(x)
+	}
+
+	let (mut yi, mut yf) = modf(abs(y))
+	if yf != 0 && x < 0 {
+		ret nan()
+	}
+	if yi >= 1<<63 {
+		// yi is a large even int that will lead to overflow (or underflow to 0)
+		// for all x except -1 (x == 1 was handled earlier)
+		match {
+		| x == -1:
+			ret 1
+		| (abs(x) < 1) == (y > 0):
+			ret 0
+		|:
+			ret inf(1)
+		}
+	}
+
+	// ans = a1 * 2**ae (= 1 for now).
+	let mut a1 = 1.0
+	let mut ae = 0
+
+	// ans *= x**yf
+	if yf != 0 {
+		if yf > 0.5 {
+			yf--
+			yi++
+		}
+		a1 = exp(yf * log(x))
+	}
+
+	// ans *= x**yi
+	// by multiplying in successive squarings
+	// of x according to bits of yi.
+	// accumulate powers of two into exp.
+	let (mut x1, mut xe) = frexp(x)
+	let mut i = i64(yi)
+	for i != 0; i >>= 1 {
+		if xe < -1<<12 || 1<<12 < xe {
+			// catch xe before it overflows the left shift below
+			// Since i !=0 it has at least one bit still set, so ae will accumulate xe
+			// on at least one more iteration, ae += xe is a lower bound on ae
+			// the lower bound on ae exceeds the size of a float64 exp
+			// so the final call to Ldexp will produce under/overflow (0/Inf)
+			ae += xe
+			break
+		}
+		if i&1 == 1 {
+			a1 *= x1
+			ae += xe
+		}
+		x1 *= x1
+		xe <<= 1
+		if x1 < 0.5 {
+			x1 += x1
+			xe--
+		}
+	}
+
+	// ans = a1*2**ae
+	// if y < 0 { ans = 1 / ans }
+	// but in the opposite order
+	if y < 0 {
+		a1 = 1 / a1
+		ae = -ae
+	}
+	ret ldexp(a1, ae)
+}
+
+fn is_odd_int(x: f64): bool {
+	let (xi, xf) = modf(x)
+	ret xf == 0 && i64(xi)&1 == 1
+}

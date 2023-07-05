@@ -1,0 +1,12 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+// Error codes of conv package.
+pub enum ConvError {
+	Ok,             // No problem.
+	OutOfRange,     // Indicates that a value is out of range for the target type.
+	InvalidSyntax,  // Indicates that a value does not have the right syntax for the target type.
+	InvalidBase,    // Indicates that a base is invalid.
+	InvalidBitSize, // Indicates that a bit size is invalid.
+}

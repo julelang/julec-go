@@ -1,0 +1,202 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+// The Jule code is a modified version of the original Go code from
+// https://github.com/golang/go/blob/go1.19/src/strconv/atoi.go and came with this notice.
+//
+// ====================================================
+// Copyright (c) 2009 The Go Authors. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+// 
+//    * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//    * Redistributions in binary form must reproduce the above
+// copyright notice, this list of conditions and the following disclaimer
+// in the documentation and/or other materials provided with the
+// distribution.
+//    * Neither the name of Google Inc. nor the names of its
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// ====================================================
+
+const __INT_SIZE = 32 << (^uint(0) >> 63)
+
+// Is the size in bits of an int or uint value.
+pub const INT_SIZE = __INT_SIZE
+
+const MAX_UINT64 =  u64.MAX // 1<<64 - 1
+
+// Is a lower-case letter if and only if
+// c is either that lower-case letter or the equivalent upper-case letter.
+// Instead of writing c == 'x' || c == 'X' one can write lower(c) == 'x'.
+// Note that lower of non-letters can produce other non-letters.
+fn lower(c: byte): byte { ret c | ('x' - 'X') }
+
+// Is like parse_int but for unsigned numbers.
+//
+// A sign prefix is not permitted.
+pub fn parse_uint(mut s: str, mut base: int, mut bit_size: int): (u64, ConvError) {
+	if s == "" {
+		ret 0, ConvError.InvalidSyntax
+	}
+
+	match {
+	| 2 <= base && base <= 36:
+		// valid base; nothing to do
+	| base == 0:
+		// Look for octal, hex prefix.
+		base = 10
+		if s[0] == '0' {
+			match {
+			| s.len >= 3 && lower(s[1]) == 'b':
+				base = 2
+				s = s[2:]
+			| s.len >= 3 && lower(s[1]) == 'o':
+				base = 8
+				s = s[2:]
+			| s.len >= 3 && lower(s[1]) == 'x':
+				base = 16
+				s = s[2:]
+			|:
+				base = 8
+				s = s[1:]
+			}
+		}
+	|:
+		ret 0, ConvError.InvalidBase
+	}
+
+	if bit_size == 0 {
+		bit_size = INT_SIZE
+	} else if bit_size < 0 || bit_size > 64 {
+		ret 0, ConvError.InvalidBitSize
+	}
+
+	// Cutoff is the smallest number such that cutoff*base > MAX_UINT64.
+	// Use compile-time constants for common cases.
+	let mut cutoff: u64 = 0
+	match base {
+	| 10: cutoff = MAX_UINT64/10 + 1
+	| 16: cutoff = MAX_UINT64/16 + 1
+	|:    cutoff = MAX_UINT64/u64(base) + 1
+	}
+
+	let mut max_val: u64 = 0
+	match bit_size {
+	| 32: max_val = u32.MAX
+	| 64: max_val = u64.MAX
+	}
+	/*
+	let mut prec = 1
+	if bit_size == 64 {
+		prec = 2
+	}
+	let max_val = u64(1)<<uint(bit_size) - prec*/
+
+	let mut n: u64 = 0
+	for _, c in s {
+		let mut d: byte = 0
+		match {
+		| '0' <= c && c <= '9':
+			d = c - '0'
+		| 'a' <= lower(c) && lower(c) <= 'z':
+			d = lower(c) - 'a' + 10
+		|:
+			ret 0, ConvError.InvalidSyntax
+		}
+
+		if d >= byte(base) {
+			ret 0, ConvError.InvalidSyntax
+		}
+
+		if n >= cutoff {
+			// n*base overflows
+			ret max_val, ConvError.OutOfRange
+		}
+		n *= u64(base)
+
+		let n1 = n + u64(d)
+		if n1 < n || n1 > max_val {
+			// n+d overflows
+			ret max_val, ConvError.OutOfRange
+		}
+		n = n1
+	}
+
+	ret n, ConvError.Ok
+}
+
+// Interprets a string s in the given base (0, 2 to 36) and
+// bit size (0 to 64) and returns the corresponding value i.
+//
+// The string may begin with a leading sign: "+" or "-".
+//
+// If the base argument is 0, the true base is implied by the string's
+// prefix following the sign (if present): 2 for "0b", 8 for "0" or "0o",
+// 16 for "0x", and 10 otherwise.
+//
+// The bit_size argument specifies the integer type
+// that the result must fit into. Bit sizes 0, 8, 16, 32, and 64
+// correspond to int, i8, i16, i32, and i64.
+// If bit_size is below 0 or above 64, an error is returned.
+//
+// The errors that parse_int returns have concrete type ConvError.
+// If s is empty or contains invalid digits, err = ConvError.InvalidSyntax
+// and the returned value is 0; if the value corresponding to s cannot be
+// represented by a signed integer of the given size, err = ConvError.OutOfRange
+// and the returned value is the maximum magnitude integer of the
+// appropriate bit_size and sign.
+pub fn parse_int(mut s: str, base: int, mut bit_size: int): (i: i64, err: ConvError) {
+	if s == "" {
+		ret 0, ConvError.InvalidSyntax
+	}
+
+	// Pick off leading sign.
+	let mut neg = false
+	if s[0] == '+' {
+		s = s[1:]
+	} else if s[0] == '-' {
+		neg = true
+		s = s[1:]
+	}
+
+	// Convert unsigned and check range.
+	let mut un: uint = 0
+	un, err = parse_uint(s, base, bit_size)
+	if err != ConvError.Ok && err != ConvError.OutOfRange {
+		ret 0, err
+	}
+
+	if bit_size == 0 {
+		bit_size = INT_SIZE
+	}
+
+	let cutoff = u64(1 << uint(bit_size-1))
+	if !neg && un >= cutoff {
+		ret i64(cutoff - 1), ConvError.OutOfRange
+	}
+	if neg && un > cutoff {
+		ret -i64(cutoff), ConvError.OutOfRange
+	}
+	let mut n = i64(un)
+	if neg {
+		n = -n
+	}
+	ret n, ConvError.Ok
+}

@@ -1,0 +1,104 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+/*
+  Floating-point hyperbolic sine and cosine.
+
+  The exponential func is called for arguments
+  greater in magnitude than 0.5.
+
+  A series is used for arguments smaller in magnitude than 0.5.
+
+   cosh(x) is computed from the exponential func for
+   all arguments.
+*/
+
+// The Jule code is a modified version of the original Go code from
+// https://github.com/golang/go/blob/go1.19/src/math/sinh.go and came with this notice.
+//
+// ====================================================
+// Copyright (c) 2009 The Go Authors. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+// 
+//    * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//    * Redistributions in binary form must reproduce the above
+// copyright notice, this list of conditions and the following disclaimer
+// in the documentation and/or other materials provided with the
+// distribution.
+//    * Neither the name of Google Inc. nor the names of its
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// ====================================================
+
+// Returns the hyperbolic sine of x.
+//
+// Special cases are:
+//  sinh(±0) = ±0
+//  sinh(±inf) = ±inf
+//  sinh(nan) = nan
+pub fn sinh(mut x: f64): f64 {
+	// The coefficients are #2029 from Hart & Cheney. (20.36D)
+	const P0 = -0.6307673640497716991184787251e+6
+	const P1 = -0.8991272022039509355398013511e+5
+	const P2 = -0.2894211355989563807284660366e+4
+	const P3 = -0.2630563213397497062819489e+2
+	const Q0 = -0.6307673640497716991212077277e+6
+	const Q1 = 0.1521517378790019070696485176e+5
+	const Q2 = -0.173678953558233699533450911e+3
+
+	let mut sign = false
+	if x < 0 {
+		x = -x
+		sign = true
+	}
+
+	let mut temp: f64 = 0
+	match {
+	| x > 21:
+		temp = exp(x) * 0.5
+	| x > 0.5:
+		let ex = exp(x)
+		temp = (ex - 1/ex) * 0.5
+	|:
+		let sq = x * x
+		temp = (((P3*sq+P2)*sq+P1)*sq + P0) * x
+		temp = temp / (((sq+Q2)*sq+Q1)*sq + Q0)
+	}
+
+	if sign {
+		temp = -temp
+	}
+	ret temp
+}
+
+// Returns the hyperbolic cosine of x.
+//
+// Special cases are:
+//  cosh(±0) = 1
+//  cosh(±inf) = +inf
+//  cosh(nan) = nan
+pub fn cosh(mut x: f64): f64 {
+	x = abs(x)
+	if x > 21 {
+		ret exp(x) * 0.5
+	}
+	let ex = exp(x)
+	ret (ex + 1/ex) * 0.5
+}

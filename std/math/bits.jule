@@ -1,0 +1,88 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+// The Jule code is a modified version of the original Go code from
+// https://github.com/golang/go/blob/go1.19/src/math/bits.go and came with this notice.
+//
+// ====================================================
+// Copyright (c) 2009 The Go Authors. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+// 
+//    * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//    * Redistributions in binary form must reproduce the above
+// copyright notice, this list of conditions and the following disclaimer
+// in the documentation and/or other materials provided with the
+// distribution.
+//    * Neither the name of Google Inc. nor the names of its
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// ====================================================
+
+const UVNAN     = 0x7FF8000000000001
+const UVINF     = 0x7FF0000000000000
+const UVNEGINF  = 0xFFF0000000000000
+const UVONE     = 0x3FF0000000000000
+const MASK      = 0x7FF
+const SHIFT     = 64 - 11 - 1
+const BIAS      = 1023
+const SIGN_MASK = 1 << 63
+const FRAC_MASK = 1<<SHIFT - 1
+
+// Returns an IEEE 754 “not-a-number” value.
+pub fn nan(): f64 { ret f64_from_bits(UVNAN) }
+
+// Reports whether f is an IEEE 754 “not-a-number” value.
+pub fn is_nan(f: f64): bool {
+	// IEEE 754 says that only NaNs satisfy f != f.
+	// To avoid the floating-point hardware, could use:
+	//  x: = f64_bits(f);
+	//  ret u32(x>>SHIFT)&MASK == MASK && x != UVINF && x != UVNEGINF
+	ret f != f
+}
+
+// Returns positive infinity if sign >= 0, negative infinity if !sign < 0.
+pub fn inf(sign: int): f64 {
+	if sign >= 0 {
+		ret f64_from_bits(UVINF)
+	}
+	ret f64_from_bits(UVNEGINF)
+}
+
+// Reports whether f is an infinity, according to sign.
+// If sign > 0, i_sinf reports whether f is positive infinity.
+// If sign < 0, is_inf reports whether f is negative infinity.
+// If sign == 0, is_inf reports whether f is either infinity.
+pub fn is_inf(f: f64, sign: int): bool {
+	// Test for infinity by comparing against maximum float.
+	// To avoid the floating-point hardware, could use:
+	//  x: = f64_bits(f);
+	//  ret sign >= 0 && x == UVINF || sign <= 0 && x == UVNEGINF;
+	ret sign >= 0 && f > f64.MAX || sign <= 0 && f < -f64.MAX
+}
+
+// Returns a normal number y and exponent exp
+// satisfying x == y × 2**exp. It assumes x is finite and non-zero.
+fn normalize(x: f64): (y: f64, exp: int) {
+	const SMALLEST_NORMAL = 2.2250738585072014e-308 // 2**-1022
+	if abs(x) < SMALLEST_NORMAL {
+		ret x * (1 << 52), -52
+	}
+	ret x, 0
+}

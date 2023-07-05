@@ -1,0 +1,332 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+/*
+  Bessel function of the first and second kinds of order n.
+*/
+
+// The Jule code is a modified version of the original Go code from
+// https://github.com/golang/go/blob/go1.19/src/math/jn.go and came with this notice.
+//
+// ====================================================
+// Copyright (c) 2009 The Go Authors. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+// 
+//    * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//    * Redistributions in binary form must reproduce the above
+// copyright notice, this list of conditions and the following disclaimer
+// in the documentation and/or other materials provided with the
+// distribution.
+//    * Neither the name of Google Inc. nor the names of its
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// ====================================================
+
+// The original C code and the long comment below are
+// from FreeBSD's /usr/src/lib/msun/src/e_jn.c and
+// came with this notice. The Jule code is a simplified
+// version of the original C.
+//
+// ====================================================
+// Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+//
+// Developed at SunPro, a Sun Microsystems, Inc. business.
+// Permission to use, copy, modify, and distribute this
+// software is freely granted, provided that this notice
+// is preserved.
+// ====================================================
+//
+// __ieee754_jn(n, x), __ieee754_yn(n, x)
+// floating point Bessel's function of the 1st and 2nd kind
+// of order n
+//
+// Special cases:
+//      y0(0)=y1(0)=yn(n,0) = -inf with division by zero signal;
+//      y0(-ve)=y1(-ve)=yn(n,-ve) are NaN with invalid signal.
+// Note 2. About jn(n,x), yn(n,x)
+//      For n=0, j0(x) is called,
+//      for n=1, j1(x) is called,
+//      for n<x, forward recursion is used starting
+//      from values of j0(x) and j1(x).
+//      for n>x, a continued fraction approximation to
+//      j(n,x)/j(n-1,x) is evaluated and then backward
+//      recursion is used starting from a supposed value
+//      for j(n,x). The resulting value of j(0,x) is
+//      compared with the actual value to correct the
+//      supposed value of j(n,x).
+//
+//      yn(n,x) is similar in all respects, except
+//      that forward recursion is used for all
+//      values of n>1.
+
+// Returns the order-n Bessel function of the first kind.
+//
+// Special cases are:
+//  jn(n, ±inf) = 0
+//  jn(n, nan) = nan
+pub fn jn(mut n: int, mut x: f64): f64 {
+	const TWO_M29 = 1.0 / (1 << 29)    // 2**-29 0x3e10000000000000
+	const TWO302  = 0x52D0000000000000 //1 << 302 // 2**302 0x52D0000000000000
+	// special cases
+	match {
+	| is_nan(x):
+		ret x
+	| is_inf(x, 0):
+		ret 0
+	}
+	// J(-n, x) = (-1)**n * J(n, x), J(n, -x) = (-1)**n * J(n, x)
+	// Thus, J(-n, x) = J(n, -x)
+
+	if n == 0 {
+		ret j0(x)
+	}
+	if x == 0 {
+		ret 0
+	}
+	if n < 0 {
+		n, x = -n, -x
+	}
+	if n == 1 {
+		ret j1(x)
+	}
+	let mut sign = false
+	if x < 0 {
+		x = -x
+		if n&1 == 1 {
+			sign = true // odd n and negative x
+		}
+	}
+	let mut b: f64 = 0
+	if f64(n) <= x {
+		// Safe to use J(n+1,x)=2n/x *J(n,x)-J(n-1,x)
+		if x >= TWO302 { // x > 2**302
+			// (x >> n**2)
+			//          Jn(x) = cos(x-(2n+1)*pi/4)*sqrt(2/x*pi)
+			//          Yn(x) = sin(x-(2n+1)*pi/4)*sqrt(2/x*pi)
+			//          Let s=sin(x), c=cos(x),
+			//              xn=x-(2n+1)*pi/4, sqt2 = sqrt(2),then
+			//
+			//                 n    sin(xn)*sqt2    cos(xn)*sqt2
+			//              ----------------------------------
+			//                 0     s-c             c+s
+			//                 1    -s-c            -c+s
+			//                 2    -s+c            -c-s
+			//                 3     s+c             c-s
+
+			let mut temp: f64 = 0
+			let (s, c) = sincos(x)
+			match n & 3 {
+			| 0: temp = c + s
+			| 1: temp = -c + s
+			| 2: temp = -c - s
+			| 3: temp = c - s
+			}
+			b = (1 / SQRT_PI) * temp / sqrt(x)
+		} else {
+			b = j1(x)
+			let (mut i, mut a) = 1, j0(x)
+			for i < n; i++ {
+				a, b = b, b*(f64(i+i)/x)-a // avoid underflow
+			}
+		}
+	} else {
+		if x < TWO_M29 { // x < 2**-29
+			// x is tiny, return the first Taylor expansion of J(n,x)
+			// J(n,x) = 1/n!*(x/2)**n  - ...
+
+			if n > 33 { // underflow
+				b = 0
+			} else {
+				let temp = x * 0.5
+				b = temp
+				let mut a = 1.0
+				let mut i = 2
+				for i <= n; i++ {
+					a *= f64(i) // a = n!
+					b *= temp   // b = (x/2)**n
+				}
+				b /= a
+			}
+		} else {
+			// use backward recurrence
+			//                      x      x**2      x**2
+			//  J(n,x)/J(n-1,x) =  ----   ------   ------   .....
+			//                      2n  - 2(n+1) - 2(n+2)
+			//
+			//                      1      1        1
+			//  (for large x)   =  ----  ------   ------   .....
+			//                      2n   2(n+1)   2(n+2)
+			//                      -- - ------ - ------ -
+			//                       x     x         x
+			//
+			// Let w = 2n/x and h=2/x, then the above quotient
+			// is equal to the continued fraction:
+			//                  1
+			//      = -----------------------
+			//                     1
+			//         w - -----------------
+			//                        1
+			//              w+h - ---------
+			//                     w+2h - ...
+			//
+			// To determine how many terms needed, let
+			// Q(0) = w, Q(1) = w(w+h) - 1,
+			// Q(k) = (w+k*h)*Q(k-1) - Q(k-2),
+			// When Q(k) > 1e4	good for single
+			// When Q(k) > 1e9	good for double
+			// When Q(k) > 1e17	good for quadruple
+
+			// determine k
+			let w = f64(n+n) / x
+			let h = 2 / x
+			let mut q0 = w
+			let mut z = w + h
+			let mut q1 = w*z - 1
+			let mut k = 1
+			for q1 < 1e9 {
+				k++
+				z += h
+				q0, q1 = q1, z*q1-q0
+			}
+			let m = n + n
+			let mut t = 0.0
+			let mut i = 2 * (n + k)
+			for i >= m; i -= 2 {
+				t = 1 / (f64(i)/x - t)
+			}
+			let mut a = t
+			b = 1
+			//  estimate log((2/x)**n*n!) = n*log(2/x)+n*ln(n)
+			//  Hence, if n*(log(2n/x)) > ...
+			//  single 8.8722839355e+01
+			//  double 7.09782712893383973096e+02
+			//  long double 1.1356523406294143949491931077970765006170e+04
+			//  then recurrent value may overflow and the result is
+			//  likely underflow to zero
+
+			let mut tmp = f64(n)
+			let v = 2 / x
+			tmp = tmp * log(abs(v*tmp))
+			if tmp < 7.09782712893383973096e+02 {
+				let mut i = n - 1
+				for i > 0; i-- {
+					let di = f64(i + i)
+					a, b = b, b*di/x-a
+				}
+			} else {
+				let mut i = n - 1
+				for i > 0; i-- {
+					let di = f64(i + i)
+					a, b = b, b*di/x-a
+					// scale b to avoid spurious overflow
+					if b > 1e100 {
+						a /= b
+						t /= b
+						b = 1
+					}
+				}
+			}
+			b = t * j0(x) / b
+		}
+	}
+	if sign {
+		ret -b
+	}
+	ret b
+}
+
+// Returns the order-n Bessel function of the second kind.
+//
+// Special cases are:
+//  yn(n, +inf) = 0
+//  yn(n ≥ 0, 0) = -inf
+//  yn(n < 0, 0) = +inf if n is odd, -inf if n is even
+//  yn(n, x < 0) = nan
+//  yn(n, nan) = nan
+pub fn yn(mut n: int, x: f64): f64 {
+	const TWO302 = 0x52D0000000000000 // 1 << 302 // 2**302 0x52D0000000000000
+	// special cases
+	match {
+	| x < 0 | is_nan(x):
+		ret nan()
+	| is_inf(x, 1):
+		ret 0
+	}
+
+	if n == 0 {
+		ret y0(x)
+	}
+	if x == 0 {
+		if n < 0 && n&1 == 1 {
+			ret inf(1)
+		}
+		ret inf(-1)
+	}
+	let mut sign = false
+	if n < 0 {
+		n = -n
+		if n&1 == 1 {
+			sign = true // sign true if n < 0 && |n| odd
+		}
+	}
+	if n == 1 {
+		if sign {
+			ret -y1(x)
+		}
+		ret y1(x)
+	}
+	let mut b: f64 = 0
+	if x >= TWO302 { // x > 2**302
+		// (x >> n**2)
+		//	    Jn(x) = cos(x-(2n+1)*pi/4)*sqrt(2/x*pi)
+		//	    Yn(x) = sin(x-(2n+1)*pi/4)*sqrt(2/x*pi)
+		//	    Let s=sin(x), c=cos(x),
+		//		xn=x-(2n+1)*pi/4, sqt2 = sqrt(2),then
+		//
+		//		   n	sin(xn)*sqt2	cos(xn)*sqt2
+		//		----------------------------------
+		//		   0	 s-c		 c+s
+		//		   1	-s-c 		-c+s
+		//		   2	-s+c		-c-s
+		//		   3	 s+c		 c-s
+
+		let mut temp: f64 = 0
+		let (s, c) = sincos(x)
+		match n & 3 {
+		| 0: temp = s - c
+		| 1: temp = -s - c
+		| 2: temp = -s + c
+		| 3: temp = s + c
+		}
+		b = (1 / SQRT_PI) * temp / sqrt(x)
+	} else {
+		let mut a = y0(x)
+		b = y1(x)
+		// quit if b is -inf
+		let mut i = 1
+		for i < n && !is_inf(b, -1); i++ {
+			a, b = b, (f64(i+i)/x)*b-a
+		}
+	}
+	if sign {
+		ret -b
+	}
+	ret b
+}

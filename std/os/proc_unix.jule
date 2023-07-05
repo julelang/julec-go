@@ -1,0 +1,28 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+use std::sys::{
+	self,
+	PATH_MAX,
+	getcwd,
+}
+
+// Possible errors:
+//  Denied
+fn __getwd(): (str, OsError) {
+	let mut buff = make([]byte, PATH_MAX)
+	if (unsafe { getcwd(&buff[0], PATH_MAX) }) == nil {
+		ret "", get_last_os_error()
+	}
+	ret (str)(buff), OsError.Ok
+}
+
+// Possible errors:
+//  Denied IO Loop LongPath NotExist NotDir InsufficientMemory
+fn __chdir(path: str): OsError {
+	if (unsafe { std::sys::chdir(&path[0]) }) == 0 {
+		ret OsError.Ok
+	}
+	ret get_last_os_error()
+}

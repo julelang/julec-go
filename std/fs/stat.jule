@@ -1,0 +1,22 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+use std::sys::{self, S_IFDIR, S_IFREG}
+
+// Status information.
+pub struct Status {
+	// Type and mode.
+	pub mode: uint
+
+	// Total size in bytes of regular file or symbolic link.
+	pub size: uint
+}
+
+impl Status {
+	// Reports path is directory or not.
+	pub fn is_dir(self): bool { ret self.mode&S_IFDIR == S_IFDIR }
+
+	// Reports path is regular file or not.
+	pub fn is_reg(self): bool { ret self.mode&S_IFREG == S_IFREG }
+}

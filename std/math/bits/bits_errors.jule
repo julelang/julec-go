@@ -1,0 +1,16 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+struct bits_error {
+	message: str
+}
+
+impl Error for bits_error {
+	fn error(self): str {
+		ret "runtime error: " + self.message
+	}
+}
+
+let overflow_error: Error = &bits_error{"integer overflow"}
+let divide_error: Error   = &bits_error{"integer divide by zero"}

@@ -1,0 +1,155 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+// The Jule code is a modified version of the original Go code from
+// https://github.com/golang/go/blob/go1.19/src/math/floor.go and came with this notice.
+//
+// ====================================================
+// Copyright (c) 2009 The Go Authors. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+// 
+//    * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//    * Redistributions in binary form must reproduce the above
+// copyright notice, this list of conditions and the following disclaimer
+// in the documentation and/or other materials provided with the
+// distribution.
+//    * Neither the name of Google Inc. nor the names of its
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// ====================================================
+
+// Returns the greatest integer value less than or equal to x.
+//
+// Special cases are:
+//  floor(±0) = ±0
+//  floor(±inf) = ±inf
+//  floor(nan) = nan
+pub fn floor(x: f64): f64 {
+	if x == 0 || is_nan(x) || is_inf(x, 0) {
+		ret x
+	}
+	if x < 0 {
+		let (mut d, fract) = modf(-x)
+		if fract != 0.0 {
+			d = d + 1
+		}
+		ret -d
+	}
+	let (d, _) = modf(x)
+	ret d
+}
+
+// Returns the least integer value greater than or equal to x.
+//
+// Special cases are:
+//  ceil(±0) = ±0
+//  ceil(±inf) = ±inf
+//  ceil(nan) = nan
+pub fn ceil(x: f64): f64 { ret -floor(-x) }
+
+// Returns the integer value of x.
+//
+// Special cases are:
+//  trunc(±0) = ±0
+//  trunc(±inf) = ±inf
+//  trunc(nan) = nan
+pub fn trunc(x: f64): f64 {
+	if x == 0 || is_nan(x) || is_inf(x, 0) {
+		ret x
+	}
+	let (d, _) = modf(x)
+	ret d
+}
+
+// Returns the nearest integer, rounding half away from zero.
+//
+// Special cases are:
+//  round(±0) = ±0
+//  round(±inf) = ±inf
+//  round(nan) = nan
+pub fn round(x: f64): f64 {
+	// round is a faster implementation of:
+	//
+	// pub round(x f64) f64 {
+	//   t: = trunc(x)
+	//   if abs(x-t) >= 0.5 {
+	//       ret t + copysign(1, x)
+	//   }
+	//   ret t
+	// }
+	let mut bits = f64_bits(x)
+	let mut e = uint(bits>>SHIFT) & MASK
+	if e < BIAS {
+		// Round abs(x) < 1 including denormals.
+		bits &= SIGN_MASK // +-0
+		if e == BIAS-1 {
+			bits |= UVONE // +-1
+		}
+	} else if e < BIAS+SHIFT {
+		// Round any abs(x) >= 1 containing a fractional component [0,1).
+		//
+		// Numbers with larger exponents are returned unchanged since they
+		// must be either an integer, infinity, or NaN.
+		const HALF = 1 << (SHIFT - 1)
+		e -= BIAS
+		bits += HALF >> e
+		bits &= ^(FRAC_MASK >> e)
+	}
+	ret f64_from_bits(bits)
+}
+
+// Returns the nearest integer, rounding ties to even.
+//
+// Special cases are:
+//  round_even(±0) = ±0
+//  round_even(±inf) = ±inf
+//  round_even(nan) = nan
+pub fn round_even(x: f64): f64 {
+	// round_even is a faster implementation of:
+	//
+	// pub round_even(x f64) f64 {
+	//   t: = trunc(x)
+	//   odd: = remainder(t, 2) != 0
+	//   d: = abs(x - t)
+	//   if d > 0.5 || (d == 0.5 && odd) {
+	//       ret t + copysign(1, x)
+	//   }
+	//   ret t
+	// }
+	let mut bits = f64_bits(x)
+	let mut e = uint(bits>>SHIFT) & MASK
+	if e >= BIAS {
+		// Round abs(x) >= 1.
+		// - Large numbers without fractional components, infinity, and NaN are unchanged.
+		// - Add 0.499.. or 0.5 before truncating depending on whether the truncated
+		//   number is even or odd (respectively).
+		const half_minus_ULP = (1 << (SHIFT - 1)) - 1
+		e -= BIAS
+		bits += (half_minus_ULP + (bits>>(SHIFT-e))&1) >> e
+		bits &= ^(FRAC_MASK >> e)
+	} else if e == BIAS-1 && bits&FRAC_MASK != 0 {
+		// Round 0.5 < abs(x) < 1.
+		bits = bits&SIGN_MASK | UVONE // +-1
+	} else {
+		// Round abs(x) <= 0.5 including denormals.
+		bits &= SIGN_MASK // +-0
+	}
+	ret f64_from_bits(bits)
+}

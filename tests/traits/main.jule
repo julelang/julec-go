@@ -1,0 +1,37 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+use std::math::{PI}
+
+trait Shape {
+	fn area(self): f32
+}
+
+struct Rectangle {
+	width: int
+	height: int
+}
+
+impl Shape for Rectangle {
+	fn area(self): f32 {
+		ret self.width * self.height
+	}
+}
+
+struct Circle {
+	r: f32
+}
+
+impl Shape for Circle {
+	fn area(self): f32 {
+		ret PI * self.r * self.r
+	}
+}
+
+fn main() {
+	let rect: Shape = Rectangle{90, 5}
+	let circ: Shape = Circle{90.5}
+	outln(rect.area())
+	outln(circ.area())
+}

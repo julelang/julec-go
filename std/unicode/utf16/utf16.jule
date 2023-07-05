@@ -1,0 +1,156 @@
+// Copyright 2022 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+// The Jule code is a modified version of the original Go code from
+// https://github.com/golang/go/blob/go1.19/src/unicode/utf16/utf16.go and came with this notice.
+//
+// ====================================================
+// Copyright (c) 2009 The Go Authors. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+// 
+//    * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//    * Redistributions in binary form must reproduce the above
+// copyright notice, this list of conditions and the following disclaimer
+// in the documentation and/or other materials provided with the
+// distribution.
+//    * Neither the name of Google Inc. nor the names of its
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// ====================================================
+
+// Package utf16 implements encoding and decoding of UTF-16 sequences.
+
+// The conditions REPLACEMENT_CHAR==std::unicode::REPLACEMENT_CHAR and
+// MAX_RUNE==std::unicode::MAX_RUNE are verified in the tests.
+// Defining them locally avoids this package depending on package unicode.
+
+// Unicode replacement character.
+const REPLACEMENT_CHAR = '\uFFFD'
+// Maximum valid Unicode code point.
+const MAX_RUNE = '\U0010FFFF'
+
+// 0xd800-0xdc00 encodes the high 10 bits of a pair.
+// 0xdc00-0xe000 encodes the low 10 bits of a pair.
+// the value is those 20 bits plus 0x10000.
+const SURR1 = 0xd800
+const SURR2 = 0xdc00
+const SURR3 = 0xe000
+
+const SURR_SELF = 0x10000
+
+// Reports whether the specified Unicode code point
+// can appear in a surrogate pair.
+pub fn is_surrogate(r: rune): bool {
+	ret SURR1 <= r && r < SURR3
+}
+
+// Returns the UTF-16 decoding of a surrogate pair.
+// If the pair is not a valid UTF-16 surrogate pair, decode_rune returns
+// the Unicode replacement code point U+FFFD.
+pub fn decode_rune(r1: rune, r2: rune): rune {
+	if SURR1 <= r1 && r1 < SURR2 && SURR2 <= r2 && r2 < SURR3 {
+		ret (r1-SURR1)<<10 | (r2 - SURR2) + SURR_SELF
+	}
+	ret REPLACEMENT_CHAR
+}
+
+// Returns the UTF-16 surrogate pair r1, r2 for the given rune.
+// If the rune is not a valid Unicode code point or does not need encoding,
+// encode_rune returns U+FFFD, U+FFFD.
+pub fn encode_rune(mut r: rune): (r1: rune, r2: rune) {
+	if r < SURR_SELF || r > MAX_RUNE {
+		ret REPLACEMENT_CHAR, REPLACEMENT_CHAR
+	}
+	r -= SURR_SELF
+	ret SURR1 + (r>>10)&0x3ff, SURR2 + r&0x3ff
+}
+
+// Returns the UTF-16 encoding of the Unicode code point sequence s.
+pub fn encode(s: []rune): []u16 {
+	let mut n = s.len
+	for _, v in s {
+		if v >= SURR_SELF {
+			n++
+		}
+	}
+
+	let mut a = make([]u16, n)
+	n = 0
+	for _, v in s {
+		match {
+		| 0 <= v && v < SURR1 | SURR3 <= v && v < SURR_SELF:
+			// normal rune
+			a[n] = u16(v)
+			n++
+		| SURR_SELF <= v && v <= MAX_RUNE:
+			// needs surrogate sequence
+			let (r1, r2) = encode_rune(v)
+			a[n] = u16(r1)
+			a[n+1] = u16(r2)
+			n += 2
+		|:
+			a[n] = u16(REPLACEMENT_CHAR)
+			n++
+		}
+	}
+	ret a[:n]
+}
+
+// Returns the Unicode code point sequence
+// represented by the UTF-16 encoding s.
+pub fn decode(s: []u16): []rune {
+	let mut a = make([]rune, s.len)
+	let mut n = 0
+	let mut i = 0
+	for i < s.len; i++ {
+		let r = s[i]
+		match {
+		| r < SURR1 | SURR3 <= r:
+			// normal rune
+			a[n] = rune(r)
+		| (SURR1 <= r && r < SURR2 && i+1 < s.len &&
+			SURR2 <= s[i+1] && s[i+1] < SURR3):
+			// valid surrogate sequence
+			a[n] = decode_rune(rune(r), rune(s[i+1]))
+			i++
+		|:
+			// invalid surrogate sequence
+			a[n] = REPLACEMENT_CHAR
+		}
+		n++
+	}
+	ret a[:n]
+}
+
+// Appends the UTF-16 encoding of the Unicode code point r
+// to the end of p and returns the extended buffer. If the rune is not
+// a valid Unicode code point, it appends the encoding of U+FFFD.
+pub fn append_rune(a: []u16, r: rune): []u16 {
+	match {
+	| 0 <= r && r < SURR1 | SURR3 <= r && r < SURR_SELF:
+		// normal rune
+		ret append(a, u16(r))
+	| SURR_SELF <= r && r <= MAX_RUNE:
+		// needs surrogate sequence
+		let (r1, r2) = encode_rune(r)
+		ret append(a, u16(r1), u16(r2))
+	}
+	ret append(a, REPLACEMENT_CHAR)
+}

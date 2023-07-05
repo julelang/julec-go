@@ -1,0 +1,159 @@
+// Copyright 2023 The Jule Programming Language.
+// Use of this source code is governed by a BSD 3-Clause
+// license that can be found in the LICENSE file.
+
+// Signed 8-bit integer.
+type i8: [compiler_implemented]
+
+// Signed 16-bit integer.
+type i16: [compiler_implemented]
+
+// Signed 32-bit integer.
+type i32: [compiler_implemented]
+
+// Signed 64-bit integer.
+type i64: [compiler_implemented]
+
+// Unsigned 8-bit integer.
+type u8: [compiler_implemented]
+
+// Unsigned 16-bit integer.
+type u16: [compiler_implemented]
+
+// Unsigned 32-bit integer.
+type u32: [compiler_implemented]
+
+// Unsigned 16-bit integer.
+type u64: [compiler_implemented]
+
+// 32-bit floating-point.
+type f32: [compiler_implemented]
+
+// 64-bit floating-point.
+type f64: [compiler_implemented]
+
+// It is a platform dependent integer type.
+type int: [compiler_implemented]
+
+// It is a platform dependent unsigned integer type.
+type uint: [compiler_implemented]
+
+// It is a platform dependent unsigned integer type
+// that is big enough to hold a pointer.
+// Can used for casting pointers to integers.
+type uintptr: [compiler_implemented]
+
+// UTF-8 byte encoded character string.
+type str: [compiler_implemented]
+
+// Boolean type for logical expressions.
+type bool: [compiler_implemented]
+
+// It can be hold any data type and nil.
+// Only supports equals (==) and not equals (!=) operators.
+//
+// x == y: true if x and y is nil
+// x == y: true if x and y has same data type and returns true of equals operator of data type for two value
+//
+// Supports casting to any type.
+// You can get type-safe value of any with casting.
+// For example:
+//   let my_any: any = 10
+//   let x = (int)(my_any)
+//
+// any type protects itself against mutability if necessary.
+// For example, you have slice value holds by any-typed variable.
+// And your variable is immutable.
+// So, if you cast your value to slice for assign to mutable variable, you will get error.
+// Because of slice is mutable type, so it's breaking immutability.
+//
+// This is is very unsafe, also blocks deriving Clone.
+// Avoid using any whenever possible.
+type any: [compiler_implemented]
+
+// Is an alias for u8.
+// It is used, by convention, to distinguish byte values from 8-bit unsigned
+// integer values.
+type byte: u8
+
+// Is an alias for i32.
+// It is used, by convention, to distinguish character values from integer values.
+type rune: i32
+
+// This is a error handling trait of standard library.
+// It is used for error handling and panics.
+//
+// Example to error handling:
+// You have a "div" method have two f64 parameter: "x" and "y".
+// This function returns division of given arguments.
+// Actually returns: (f64, Error)
+// The first return value naturally result of computation.
+// Returns result and empty Error for if the "x" and "y" is not equals to 0.
+// If not, returns 0 and returns Error instance with error message.
+// You can handle errors like that;
+//
+// let (result, err) = div(x, y)
+// if err != nil {
+//   // If has error...
+// }
+trait Error {
+	fn error(self): str
+}
+
+// Prints value to command line.
+// Uses built-in formatter.
+fn out(v)
+
+// This function same with the out function.
+// One difference, prints new line after print.
+fn outln(v)
+
+// Panics program with given error data.
+// The data converting to str and panics with
+// Error trait compatible structure instance.
+fn panic(error: any)
+
+// Recovers errors if exist and
+// call given function with handled error instance.
+fn recover(handler: fn(Error))
+
+// Returns new instance of data type for supported types.
+//
+// Slices:
+//  Allocates slice with dynamic size.
+//  Negative sizes will be accepted as 0-sized.
+fn make(T, ...V): T
+
+// Copies elements of source to destination slice.
+// Returns number of copied elements.
+// Source can be any data type that supported by destination type.
+//
+// Special cases are:
+//  copy(dest, src) = length accepts as src.len if dest.len > src.len
+//  copy(dest, src) = length accepts as dest.len if src.len > dest.len
+fn copy(mut dest: []T, mut src: []T): int
+
+// Creates new required sized slice. Copies all elements
+// of given source slice and appends given values to end of new slice.
+// Returns new slice, not changes given source slice.
+// If you want append values to source slice, assign returned slice.
+fn append(src: []T, mut values: ...T): []T
+
+// Returns nil reference of data type.
+fn new(T): &T
+
+// Returns reference to new heap-allocation initialized with
+// expression of data type if allocation is success, panics if not.
+fn new(T, mut v: T): &T
+
+// Drops allocation and reference counting of reference.
+fn drop(ref: mut &T)
+
+// Reports reference is not nil.
+fn real(ref: &T): bool
+
+// Returns mutable deep-clone of expression.
+//
+// See for more clonning information:
+// https://jule.dev/pages/manual?page=memory-immutability
+fn clone(expr: T): T
